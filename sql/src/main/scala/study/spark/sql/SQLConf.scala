@@ -97,7 +97,11 @@ private[spark] object SQLConf {
         "used to benchmark the performance impact of using DistinctAggregationRewriter to " +
         "plan aggregation queries with a single distinct column.")
 
-
+  val RUN_SQL_ON_FILES = booleanConf("spark.sql.runSQLOnFiles",
+    defaultValue = Some(true),
+    isPublic = false,
+    doc = "When true, we could use `datasource`.`path` as table in SQL query"
+  )
 }
 
 private[sql] class SQLConf extends Serializable with CatalystConf  {
@@ -114,6 +118,8 @@ private[sql] class SQLConf extends Serializable with CatalystConf  {
     getConf(SPECIALIZE_SINGLE_DISTINCT_AGG_PLANNING)
 
   def caseSensitiveAnalysis: Boolean = getConf(CASE_SENSITIVE)
+
+  private[spark] def runSQLOnFile: Boolean = getConf(RUN_SQL_ON_FILES)
 
   /**
    * Return the value of Spark SQL configuration property for the given key. If the key is not set
