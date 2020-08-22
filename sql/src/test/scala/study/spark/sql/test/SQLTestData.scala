@@ -1,6 +1,6 @@
 package study.spark.sql.test
 
-import study.spark.sql.SQLContext
+import study.spark.sql.{DataFrame, SQLContext}
 
 private[sql] trait SQLTestData { self =>
   protected def sqlContext: SQLContext
