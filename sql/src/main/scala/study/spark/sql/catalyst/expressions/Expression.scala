@@ -7,6 +7,15 @@ abstract class Expression extends TreeNode[Expression] {
 }
 
 /**
+ * A leaf expression, i.e. one without any child expressions.
+ */
+abstract class LeafExpression extends Expression {
+
+  def children: Seq[Expression] = Nil
+}
+
+
+/**
   * An expression that cannot be evaluated. Some expressions don't live past analysis or optimization
   * time (e.g. Star). This trait is used by those expressions.
   */

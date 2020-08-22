@@ -16,3 +16,12 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with Logging {
     this
   }
 }
+
+/**
+ * A logical plan node with single child.
+ */
+abstract class UnaryNode extends LogicalPlan {
+  def child: LogicalPlan
+
+  override def children: Seq[LogicalPlan] = child :: Nil
+}

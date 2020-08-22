@@ -5,6 +5,7 @@ import study.spark.sql.{DataFrame, SQLContext}
 private[sql] trait SQLTestData { self =>
   protected def sqlContext: SQLContext
   import SQLTestData._
+
   protected lazy val complexData: DataFrame = {
     val df = sqlContext.sparkContext.parallelize(
       ComplexData(Map("1" -> 1), TestData(1, "1"), Seq(1, 1, 1), true) ::

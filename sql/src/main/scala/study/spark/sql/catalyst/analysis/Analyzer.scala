@@ -10,10 +10,10 @@ import study.spark.sql.catalyst.rules.{Rule, RuleExecutor}
  * a [[FunctionRegistry]].
  */
 class Analyzer(
-                catalog: Catalog,
-                registry: FunctionRegistry,
-                conf: CatalystConf,
-                maxIterations: Int = 100)
+    catalog: Catalog,
+    registry: FunctionRegistry,
+    conf: CatalystConf,
+    maxIterations: Int = 100)
   extends RuleExecutor[LogicalPlan] with CheckAnalysis {
 
   /**

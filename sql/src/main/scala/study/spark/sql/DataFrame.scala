@@ -1,6 +1,8 @@
 package study.spark.sql
 
-import study.spark.sql.catalyst.plans.logical.LogicalPlan
+import study.spark.sql.catalyst.SqlParser
+import study.spark.sql.catalyst.plans.logical.{Command, InsertIntoTable, LogicalPlan}
+import study.spark.sql.execution.datasources.CreateTableUsingAsSelect
 import study.spark.sql.execution.{QueryExecution, Queryable}
 
 private[sql] object DataFrame {
@@ -31,6 +33,30 @@ class DataFrame private[sql](
     })
   }
 
+  @transient protected[sql] val logicalPlan: LogicalPlan = queryExecution.logical match {
+    // For various commands (like DDL) and queries with side effects, we force query optimization to
+    // happen right away to let these side effects take place eagerly.
+    case _: Command |
+         _: InsertIntoTable |
+         _: CreateTableUsingAsSelect =>
+      LogicalRDD(queryExecution.analyzed.output, queryExecution.toRdd)(sqlContext)
+    case _ =>
+      queryExecution.analyzed
+  }
+
+  /**
+   * Filters rows using the given condition.
+   * {{{
+   *   // The following are equivalent:
+   *   peopleDf.filter($"age" > 15)
+   *   peopleDf.where($"age" > 15)
+   * }}}
+   * @group dfops
+   * @since 1.3.0
+   */
+  def filter(condition: Column): DataFrame = withPlan {
+    Filter(condition.expr, logicalPlan)
+  }
 
   /**
     * Filters rows using the given SQL expression.

@@ -1,6 +1,7 @@
 package study.spark.sql
 
 import study.spark.Logging
+import study.spark.sql.catalyst.analysis.{UnresolvedAttribute, UnresolvedStar}
 import study.spark.sql.catalyst.expressions.Expression
 
 private[sql] object Column {
