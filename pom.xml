@@ -112,6 +112,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <java.version>1.7</java.version>
         <scala.binary.version>2.10</scala.binary.version>
         <scala.version>2.10.4</scala.version>
         <PermGen>64m</PermGen>
