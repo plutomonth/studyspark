@@ -61,6 +61,17 @@
                 </exclusion>
             </exclusions>
         </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>${slf4j.version}</version>
+            <scope>${hadoop.deps.scope}</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.esotericsoftware</groupId>
+            <artifactId>kryo</artifactId>
+            <version>3.0.3</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -160,5 +171,6 @@
         <CodeCacheSize>512m</CodeCacheSize>
         <commons-lang2.version>2.6</commons-lang2.version>
         <fasterxml.jackson.version>2.4.4</fasterxml.jackson.version>
+        <slf4j.version>1.7.10</slf4j.version>
     </properties>
 </project>

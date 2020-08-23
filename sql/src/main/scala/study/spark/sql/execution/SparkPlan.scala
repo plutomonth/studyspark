@@ -40,8 +40,6 @@ abstract class SparkPlan extends QueryPlan[SparkPlan] with Logging with Serializ
    */
   def canProcessSafeRows: Boolean = true
 
-  /** Returns the name of this type of TreeNode.  Defaults to the class name. */
-  def nodeName: String = getClass.getSimpleName
 
   /**
    * Whether the "prepare" method is called.

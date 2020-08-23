@@ -3,6 +3,7 @@ package study.spark
 import java.util.Properties
 
 import org.apache.commons.lang.SerializationUtils
+import study.spark.util.ClosureCleaner
 
 class SparkContext(config: SparkConf) extends Logging {
 
@@ -34,6 +35,24 @@ class SparkContext(config: SparkConf) extends Logging {
       localProperties.get.setProperty(key, value)
     }
   }
+
+  /**
+   * Clean a closure to make it ready to serialized and send to tasks
+   * (removes unreferenced variables in $outer's, updates REPL variables)
+   * If <tt>checkSerializable</tt> is set, <tt>clean</tt> will also proactively
+   * check to see if <tt>f</tt> is serializable and throw a <tt>SparkException</tt>
+   * if not.
+   *
+   * @param f the closure to clean
+   * @param checkSerializable whether or not to immediately check <tt>f</tt> for serializability
+   * @throws SparkException if <tt>checkSerializable</tt> is set but <tt>f</tt> is not
+   *   serializable
+   */
+  private[spark] def clean[F <: AnyRef](f: F, checkSerializable: Boolean = true): F = {
+    ClosureCleaner.clean(f, checkSerializable)
+    f
+  }
+
 }
 
 object SparkContext extends Logging {

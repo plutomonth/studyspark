@@ -51,6 +51,30 @@ private[spark] object RDDOperationScope extends Logging {
 
   /**
    * Execute the given body such that all RDDs created in this body will have the same scope.
+   * The name of the scope will be the first method name in the stack trace that is not the
+   * same as this method's.
+   *
+   * Note: Return statements are NOT allowed in body.
+   */
+  private[spark] def withScope[T](
+     sc: SparkContext,
+     allowNesting: Boolean = false)(body: => T): T = {
+    val ourMethodName = "withScope"
+    val callerMethodName = Thread.currentThread.getStackTrace()
+      .dropWhile(_.getMethodName != ourMethodName)
+      .find(_.getMethodName != ourMethodName)
+      .map(_.getMethodName)
+      .getOrElse {
+        // Log a warning just in case, but this should almost certainly never happen
+        logWarning("No valid method name for this RDD operation scope!")
+        "N/A"
+      }
+    withScope[T](sc, callerMethodName, allowNesting, ignoreParent = false)(body)
+  }
+
+
+  /**
+   * Execute the given body such that all RDDs created in this body will have the same scope.
    *
    * If nesting is allowed, any subsequent calls to this method in the given body will instantiate
    * child scopes that are nested within our scope. Otherwise, these calls will take no effect.

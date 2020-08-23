@@ -1,6 +1,6 @@
 package study.spark.rdd
 
-import study.spark.{Dependency, Logging, SparkContext}
+import study.spark.{Dependency, Logging, OneToOneDependency, SparkContext, SparkException, TaskContext}
 
 import scala.reflect.ClassTag
 
@@ -12,7 +12,7 @@ import scala.reflect.ClassTag
  * pairs, such as `groupByKey` and `join`;
  * [[study.spark.rdd.DoubleRDDFunctions]] contains operations available only on RDDs of
  * Doubles; and
- * [[org.apache.spark.rdd.SequenceFileRDDFunctions]] contains operations available on RDDs that
+ * [[study.spark.rdd.SequenceFileRDDFunctions]] contains operations available on RDDs that
  * can be saved as SequenceFiles.
  * All operations are automatically available on any RDD of the right type (e.g. RDD[(Int, Int)]
  * through implicit.
@@ -37,4 +37,46 @@ abstract class RDD[T: ClassTag](
      @transient private var deps: Seq[Dependency[_]]
    ) extends Serializable with Logging {
 
+
+   private def sc: SparkContext = {
+      if (_sc == null) {
+         throw new SparkException(
+            "RDD transformations and actions can only be invoked by the driver, not inside of other " +
+              "transformations; for example, rdd1.map(x => rdd2.values.count() * x) is invalid because " +
+              "the values transformation and count action cannot be performed inside of the rdd1.map " +
+              "transformation. For more information, see SPARK-5063.")
+      }
+      _sc
+   }
+
+   /** Construct an RDD with just a one-to-one dependency on one parent */
+   def this(@transient oneParent: RDD[_]) =
+      this(oneParent.context , List(new OneToOneDependency(oneParent)))
+
+   /** The [[study.spark.SparkContext]] that this RDD was created on. */
+   def context: SparkContext = sc
+
+   /**
+    * Return a new RDD by applying a function to each partition of this RDD.
+    *
+    * `preservesPartitioning` indicates whether the input function preserves the partitioner, which
+    * should be `false` unless this is a pair RDD and the input function doesn't modify the keys.
+    */
+   def mapPartitions[U: ClassTag](
+        f: Iterator[T] => Iterator[U],
+        preservesPartitioning: Boolean = false): RDD[U] = withScope {
+      val cleanedF = sc.clean(f)
+      new MapPartitionsRDD(
+         this,
+         (context: TaskContext, index: Int, iter: Iterator[T]) => cleanedF(iter),
+         preservesPartitioning)
+   }
+
+   /**
+    * Execute a block of code in a scope such that all new RDDs created in this body will
+    * be part of the same scope. For more detail, see {{org.apache.spark.rdd.RDDOperationScope}}.
+    *
+    * Note: Return statements are NOT allowed in the given body.
+    */
+   private[spark] def withScope[U](body: => U): U = RDDOperationScope.withScope[U](sc)(body)
 }
