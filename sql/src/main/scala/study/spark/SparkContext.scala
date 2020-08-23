@@ -1,11 +1,19 @@
 package study.spark
 
+import java.io.Serializable
 import java.util.Properties
 
 import org.apache.commons.lang.SerializationUtils
 import study.spark.util.ClosureCleaner
 
+import scala.collection.generic.Growable
+import scala.reflect.ClassTag
+
 class SparkContext(config: SparkConf) extends Logging {
+
+  private var _cleaner: Option[ContextCleaner] = None
+
+  private[spark] def cleaner: Option[ContextCleaner] = _cleaner
 
   // Thread Local variable that can be used by users to pass information down the stack
   protected[spark] val localProperties = new InheritableThreadLocal[Properties] {
@@ -51,6 +59,20 @@ class SparkContext(config: SparkConf) extends Logging {
   private[spark] def clean[F <: AnyRef](f: F, checkSerializable: Boolean = true): F = {
     ClosureCleaner.clean(f, checkSerializable)
     f
+  }
+
+  /**
+   * Create an accumulator from a "mutable collection" type.
+   *
+   * Growable and TraversableOnce are the standard APIs that guarantee += and ++=, implemented by
+   * standard mutable collections. So you can use this with mutable Map, Set, etc.
+   */
+  def accumulableCollection[R <% Growable[T] with TraversableOnce[T] with Serializable: ClassTag, T]
+  (initialValue: R): Accumulable[R, T] = {
+    val param = new GrowableAccumulableParam[R, T]
+    val acc = new Accumulable(initialValue, param)
+    cleaner.foreach(_.registerAccumulatorForCleanup(acc))
+    acc
   }
 
 }

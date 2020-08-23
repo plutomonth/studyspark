@@ -15,6 +15,48 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with Logging {
   def resolveOperators(rule: PartialFunction[LogicalPlan, LogicalPlan]): LogicalPlan = {
     this
   }
+
+  /**
+   * Computes [[Statistics]] for this plan. The default implementation assumes the output
+   * cardinality is the product of of all child plan's cardinality, i.e. applies in the case
+   * of cartesian joins.
+   *
+   * [[LeafNode]]s must override this.
+   */
+  def statistics: Statistics = {
+    if (children.size == 0) {
+      throw new UnsupportedOperationException(s"LeafNode $nodeName must implement statistics.")
+    }
+    Statistics(sizeInBytes = children.map(_.statistics.sizeInBytes).product)
+  }
+
+
+  /**
+   * Returns true when the given logical plan will return the same results as this logical plan.
+   *
+   * Since its likely undecidable to generally determine if two given plans will produce the same
+   * results, it is okay for this function to return false, even if the results are actually
+   * the same.  Such behavior will not affect correctness, only the application of performance
+   * enhancements like caching.  However, it is not acceptable to return true if the results could
+   * possibly be different.
+   *
+   * By default this function performs a modified version of equality that is tolerant of cosmetic
+   * differences like attribute naming and or expression id differences.  Logical operators that
+   * can do better should override this function.
+   */
+  def sameResult(plan: LogicalPlan): Boolean = {
+    val cleanLeft = EliminateSubQueries(this)
+    val cleanRight = EliminateSubQueries(plan)
+
+    cleanLeft.getClass == cleanRight.getClass &&
+      cleanLeft.children.size == cleanRight.children.size && {
+      logDebug(
+        s"[${cleanRight.cleanArgs.mkString(", ")}] == [${cleanLeft.cleanArgs.mkString(", ")}]")
+      cleanRight.cleanArgs == cleanLeft.cleanArgs
+    } &&
+      (cleanLeft.children, cleanRight.children).zipped.forall(_ sameResult _)
+  }
+
 }
 
 /**

@@ -2,6 +2,9 @@ package study.spark
 
 import java.io.Serializable
 
+import scala.collection.generic.Growable
+import scala.reflect.ClassTag
+
 /**
  * A data type that can be accumulated, ie has an commutative and associative "add" operation,
  * but where the result type, `R`, may be different from the element type being added, `T`.
@@ -27,6 +30,20 @@ class Accumulable[R, T] private[spark] (
        internal: Boolean)
   extends Serializable {
 
+  private[spark] def this(
+        @transient initialValue: R, param: AccumulableParam[R, T], internal: Boolean) = {
+    this(initialValue, param, None, internal)
+  }
+
+  def this(@transient initialValue: R, param: AccumulableParam[R, T], name: Option[String]) =
+    this(initialValue, param, name, false)
+
+  def this(@transient initialValue: R, param: AccumulableParam[R, T]) =
+    this(initialValue, param, None)
+
+
+  val id: Long = Accumulators.newId
+
   @volatile @transient private var value_ : R = initialValue // Current value on master
   private var deserialized = false
 
@@ -51,4 +68,22 @@ class Accumulable[R, T] private[spark] (
  */
 trait AccumulableParam[R, T] extends Serializable {
 
+}
+
+private[spark] class
+GrowableAccumulableParam[R <% Growable[T] with TraversableOnce[T] with Serializable: ClassTag, T]
+  extends AccumulableParam[R, T] {
+
+  }
+
+// TODO: The multi-thread support in accumulators is kind of lame; check
+// if there's a more intuitive way of doing it right
+private[spark] object Accumulators extends Logging {
+
+  private var lastId: Long = 0
+
+  def newId(): Long = synchronized {
+    lastId += 1
+    lastId
+  }
 }

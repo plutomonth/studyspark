@@ -27,4 +27,8 @@ abstract class RuleExecutor[TreeType <: TreeNode[_]] extends Logging {
 
     curPlan
   }
+
+  /** A strategy that runs until fix point or maxIterations times, whichever comes first. */
+  case class FixedPoint(maxIterations: Int) extends Strategy
+
 }

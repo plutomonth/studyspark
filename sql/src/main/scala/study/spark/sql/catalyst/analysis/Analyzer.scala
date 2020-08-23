@@ -21,3 +21,14 @@ class Analyzer(
     */
   val extendedResolutionRules: Seq[Rule[LogicalPlan]] = Nil
 }
+
+
+/**
+ * Removes [[Subquery]] operators from the plan. Subqueries are only required to provide
+ * scoping information for attributes and can be removed once analysis is complete.
+ */
+object EliminateSubQueries extends Rule[LogicalPlan] {
+  def apply(plan: LogicalPlan): LogicalPlan = plan transform {
+    case Subquery(_, child) => child
+  }
+}

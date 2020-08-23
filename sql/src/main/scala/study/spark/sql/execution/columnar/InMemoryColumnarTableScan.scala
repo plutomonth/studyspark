@@ -4,7 +4,7 @@ import study.spark.Accumulable
 import study.spark.rdd.RDD
 import study.spark.sql.catalyst.InternalRow
 import study.spark.sql.catalyst.analysis.MultiInstanceRelation
-import study.spark.sql.catalyst.expressions.Attribute
+import study.spark.sql.catalyst.expressions._
 import study.spark.sql.catalyst.plans.logical.{LogicalPlan, Statistics}
 import study.spark.sql.execution.{ConvertToUnsafe, SparkPlan}
 import study.spark.storage.StorageLevel
@@ -52,6 +52,8 @@ private[sql] case class InMemoryRelation(
       _batchStats
     }
 
+  override def children: Seq[LogicalPlan] = Seq.empty
+
   override def newInstance(): this.type = {
     new InMemoryRelation(
       output.map(_.newInstance()),
@@ -63,6 +65,16 @@ private[sql] case class InMemoryRelation(
       _cachedColumnBuffers,
       statisticsToBePropagated,
       batchStats).asInstanceOf[this.type]
+  }
+  @transient val partitionStatistics = new PartitionStatistics(output)
+
+  private def computeSizeInBytes = {
+    val sizeOfRow: Expression =
+      BindReferences.bindReference(
+        output.map(a => partitionStatistics.forAttribute(a).sizeInBytes).reduce(Add),
+        partitionStatistics.schema)
+
+    batchStats.value.map(row => sizeOfRow.eval(row).asInstanceOf[Long]).sum
   }
 
   override def statistics: Statistics = {

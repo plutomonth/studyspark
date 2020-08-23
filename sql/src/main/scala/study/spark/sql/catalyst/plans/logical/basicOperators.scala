@@ -13,3 +13,8 @@ case class InsertIntoTable(
   override def children: Seq[LogicalPlan] = child :: Nil
   override def output: Seq[Attribute] = Seq.empty
 }
+
+
+case class Subquery(alias: String, child: LogicalPlan) extends UnaryNode {
+  override def output: Seq[Attribute] = child.output.map(_.withQualifiers(alias :: Nil))
+}

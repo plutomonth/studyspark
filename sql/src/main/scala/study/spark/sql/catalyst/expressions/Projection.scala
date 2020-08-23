@@ -1,6 +1,7 @@
 package study.spark.sql.catalyst.expressions
 
 import study.spark.sql.catalyst.InternalRow
+import study.spark.sql.catalyst.expressions.codegen.GenerateUnsafeProjection
 import study.spark.sql.types.{DataType, StructType}
 
 /**

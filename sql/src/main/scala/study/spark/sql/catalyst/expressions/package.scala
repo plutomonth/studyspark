@@ -1,6 +1,10 @@
 package study.spark.sql.catalyst
 
 package object expressions {
+  /**
+   * Used as input into expressions whose output does not depend on any input value.
+   */
+  val EmptyRow: InternalRow = null
 
   /**
    * Converts a [[InternalRow]] to another Row given a sequence of expression that define each

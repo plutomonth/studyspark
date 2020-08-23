@@ -38,6 +38,15 @@ trait Logging {
     if (log.isErrorEnabled) log.error(msg, throwable)
   }
 
+  protected def logDebug(msg: => String) {
+    if (log.isDebugEnabled) log.debug(msg)
+  }
+
+  // Log methods that take only a String
+  protected def logInfo(msg: => String) {
+    if (log.isInfoEnabled) log.info(msg)
+  }
+
   private def initializeIfNecessary() {
     if (!Logging.initialized) {
       Logging.initLock.synchronized {
