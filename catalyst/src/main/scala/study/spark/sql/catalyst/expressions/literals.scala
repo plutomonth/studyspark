@@ -2,10 +2,11 @@ package study.spark.sql.catalyst.expressions
 
 import java.sql.{Date, Timestamp}
 
-import study.spark.sql.catalyst.InternalRow
+import study.spark.sql.catalyst.{CatalystTypeConverters, InternalRow}
 import study.spark.sql.catalyst.expressions.codegen._
+import study.spark.sql.catalyst.util.DateTimeUtils._
 import study.spark.sql.types._
-import study.spark.unsafe.types.UTF8String
+import study.spark.unsafe.types.{CalendarInterval, UTF8String}
 
 object Literal {
   def apply(v: Any): Literal = v match {
@@ -21,14 +22,18 @@ object Literal {
     case d: java.math.BigDecimal =>
       Literal(Decimal(d), DecimalType(Math.max(d.precision, d.scale), d.scale()))
     case d: Decimal => Literal(d, DecimalType(Math.max(d.precision, d.scale), d.scale))
-    case t: Timestamp => Literal(DateTimeUtils.fromJavaTimestamp(t), TimestampType)
-    case d: Date => Literal(DateTimeUtils.fromJavaDate(d), DateType)
+    case t: Timestamp => Literal(fromJavaTimestamp(t), TimestampType)
+    case d: Date => Literal(fromJavaDate(d), DateType)
     case a: Array[Byte] => Literal(a, BinaryType)
     case i: CalendarInterval => Literal(i, CalendarIntervalType)
     case null => Literal(null, NullType)
     case v: Literal => v
     case _ =>
       throw new RuntimeException("Unsupported literal type " + v.getClass + " " + v)
+  }
+
+  def create(v: Any, dataType: DataType): Literal = {
+    Literal(CatalystTypeConverters.convertToCatalyst(v), dataType)
   }
 }
 

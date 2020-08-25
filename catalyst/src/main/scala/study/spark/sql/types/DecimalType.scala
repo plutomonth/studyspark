@@ -12,14 +12,6 @@ case class DecimalType(precision: Int, scale: Int) extends FractionalType {
   def this(precision: Int) = this(precision, 0)
   def this() = this(10)
 
-  @deprecated("Use DecimalType(precision, scale) instead", "1.5")
-  def this(precisionInfo: Option[PrecisionInfo]) {
-    this(precisionInfo.getOrElse(PrecisionInfo(10, 0)).precision,
-      precisionInfo.getOrElse(PrecisionInfo(10, 0)).scale)
-  }
-
-  @deprecated("Use DecimalType.precision and DecimalType.scale instead", "1.5")
-  val precisionInfo = Some(PrecisionInfo(precision, scale))
 
   private[sql] type InternalType = Decimal
   @transient private[sql] lazy val tag = ScalaReflectionLock.synchronized { typeTag[InternalType] }
@@ -94,15 +86,6 @@ object DecimalType extends AbstractDataType {
     case LongType => LongDecimal
     case FloatType => FloatDecimal
     case DoubleType => DoubleDecimal
-  }
-
-  @deprecated("please specify precision and scale", "1.5")
-  def apply(): DecimalType = USER_DEFAULT
-
-  @deprecated("Use DecimalType(precision, scale) instead", "1.5")
-  def apply(precisionInfo: Option[PrecisionInfo]) {
-    this(precisionInfo.getOrElse(PrecisionInfo(10, 0)).precision,
-      precisionInfo.getOrElse(PrecisionInfo(10, 0)).scale)
   }
 
   private[sql] def bounded(precision: Int, scale: Int): DecimalType = {

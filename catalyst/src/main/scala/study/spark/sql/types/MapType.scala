@@ -16,3 +16,21 @@ case class MapType(
     valueContainsNull: Boolean) extends DataType {
 
 }
+
+object MapType extends AbstractDataType {
+
+  override private[sql] def defaultConcreteType: DataType = apply(NullType, NullType)
+
+  override private[sql] def acceptsType(other: DataType): Boolean = {
+    other.isInstanceOf[MapType]
+  }
+
+  override private[sql] def simpleString: String = "map"
+
+  /**
+   * Construct a [[MapType]] object with the given key type and value type.
+   * The `valueContainsNull` is true.
+   */
+  def apply(keyType: DataType, valueType: DataType): MapType =
+    MapType(keyType: DataType, valueType: DataType, valueContainsNull = true)
+}

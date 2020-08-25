@@ -25,7 +25,8 @@ public final class UTF8String implements Comparable<UTF8String>, Externalizable,
     // These are only updated by readExternal() or read()
     @Nonnull
     private Object base;
-    private long offset;    private int numBytes;
+    private long offset;
+    private int numBytes;
 
     private static int[] bytesOfCodePointInUTF8 = {2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
             2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
@@ -121,6 +122,19 @@ public final class UTF8String implements Comparable<UTF8String>, Externalizable,
         }
     }
 
+    @Override
+    public boolean equals(final Object other) {
+        if (other instanceof UTF8String) {
+            UTF8String o = (UTF8String) other;
+            if (numBytes != o.numBytes) {
+                return false;
+            }
+            return ByteArrayMethods.arrayEquals(base, offset, o.base, o.offset, numBytes);
+        } else {
+            return false;
+        }
+    }
+
     /**
      * Creates an UTF8String from String.
      */
@@ -136,6 +150,26 @@ public final class UTF8String implements Comparable<UTF8String>, Externalizable,
         }
     }
 
+    @Override
+    public int hashCode() {
+        int result = 1;
+        for (int i = 0; i < numBytes; i ++) {
+            result = 31 * result + getByte(i);
+        }
+        return result;
+    }
+
+    @Override
+    public String toString() {
+        try {
+            return new String(getBytes(), "utf-8");
+        } catch (UnsupportedEncodingException e) {
+            // Turn the exception into unchecked so we can find out about it at runtime, but
+            // don't need to add lots of boilerplate code everywhere.
+            throwException(e);
+            return "unknown";  // we will never reach here.
+        }
+    }
 
     /**
      * Returns the underline bytes, will be a copy of it if it's part of another array.

@@ -5,12 +5,13 @@ import org.codehaus.janino.ClassBodyEvaluator
 import study.spark.Logging
 import study.spark.sql.catalyst.InternalRow
 import study.spark.sql.catalyst.expressions.{EquivalentExpressions, Expression, MutableRow, UnsafeRow}
-import study.spark.sql.types.DataType
+import study.spark.sql.types.{ArrayType, AtomicType, BinaryType, BooleanType, DataType, DoubleType, FloatType, NullType, StructType, UserDefinedType}
 import study.spark.unsafe.Platform
 import study.spark.unsafe.types.UTF8String
 import study.spark.util.Utils
 
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 
 /**
  * Java source for evaluating an [[Expression]] given a [[InternalRow]] of input.
@@ -271,6 +272,16 @@ class CodeGenContext {
     addedFunctions += ((funcName, funcCode))
   }
 
+  /**
+   * List of java data types that have special accessors and setters in [[InternalRow]].
+   */
+  val primitiveTypes =
+    Seq(JAVA_BOOLEAN, JAVA_BYTE, JAVA_SHORT, JAVA_INT, JAVA_LONG, JAVA_FLOAT, JAVA_DOUBLE)
+
+  def isPrimitiveType(jt: String): Boolean = primitiveTypes.contains(jt)
+
+  def isPrimitiveType(dt: DataType): Boolean = isPrimitiveType(javaType(dt))
+
   // The collection of sub-exression result resetting methods that need to be called on each row.
   val subExprResetVariables = mutable.ArrayBuffer.empty[String]
 
@@ -298,6 +309,98 @@ class CodeGenContext {
 
   def defaultValue(dt: DataType): String = defaultValue(javaType(dt))
 
+
+  /**
+   * Generates code for equal expression in Java.
+   */
+  def genEqual(dataType: DataType, c1: String, c2: String): String = dataType match {
+    case BinaryType => s"java.util.Arrays.equals($c1, $c2)"
+    case FloatType => s"(java.lang.Float.isNaN($c1) && java.lang.Float.isNaN($c2)) || $c1 == $c2"
+    case DoubleType => s"(java.lang.Double.isNaN($c1) && java.lang.Double.isNaN($c2)) || $c1 == $c2"
+    case dt: DataType if isPrimitiveType(dt) => s"$c1 == $c2"
+    case udt: UserDefinedType[_] => genEqual(udt.sqlType, c1, c2)
+    case other => s"$c1.equals($c2)"
+  }
+
+
+  /**
+   * Generates code for comparing two expressions.
+   *
+   * @param dataType data type of the expressions
+   * @param c1 name of the variable of expression 1's output
+   * @param c2 name of the variable of expression 2's output
+   */
+  def genComp(dataType: DataType, c1: String, c2: String): String = dataType match {
+    // java boolean doesn't support > or < operator
+    case BooleanType => s"($c1 == $c2 ? 0 : ($c1 ? 1 : -1))"
+    case DoubleType => s"org.apache.spark.util.Utils.nanSafeCompareDoubles($c1, $c2)"
+    case FloatType => s"org.apache.spark.util.Utils.nanSafeCompareFloats($c1, $c2)"
+    // use c1 - c2 may overflow
+    case dt: DataType if isPrimitiveType(dt) => s"($c1 > $c2 ? 1 : $c1 < $c2 ? -1 : 0)"
+    case BinaryType => s"org.apache.spark.sql.catalyst.util.TypeUtils.compareBinary($c1, $c2)"
+    case NullType => "0"
+    case array: ArrayType =>
+      val elementType = array.elementType
+      val elementA = freshName("elementA")
+      val isNullA = freshName("isNullA")
+      val elementB = freshName("elementB")
+      val isNullB = freshName("isNullB")
+      val compareFunc = freshName("compareArray")
+      val minLength = freshName("minLength")
+      val funcCode: String =
+        s"""
+          public int $compareFunc(ArrayData a, ArrayData b) {
+            int lengthA = a.numElements();
+            int lengthB = b.numElements();
+            int $minLength = (lengthA > lengthB) ? lengthB : lengthA;
+            for (int i = 0; i < $minLength; i++) {
+              boolean $isNullA = a.isNullAt(i);
+              boolean $isNullB = b.isNullAt(i);
+              if ($isNullA && $isNullB) {
+                // Nothing
+              } else if ($isNullA) {
+                return -1;
+              } else if ($isNullB) {
+                return 1;
+              } else {
+                ${javaType(elementType)} $elementA = ${getValue("a", elementType, "i")};
+                ${javaType(elementType)} $elementB = ${getValue("b", elementType, "i")};
+                int comp = ${genComp(elementType, elementA, elementB)};
+                if (comp != 0) {
+                  return comp;
+                }
+              }
+            }
+
+            if (lengthA < lengthB) {
+              return -1;
+            } else if (lengthA > lengthB) {
+              return 1;
+            }
+            return 0;
+          }
+        """
+      addNewFunction(compareFunc, funcCode)
+      s"this.$compareFunc($c1, $c2)"
+    case schema: StructType =>
+      val comparisons = GenerateOrdering.genComparisons(this, schema)
+      val compareFunc = freshName("compareStruct")
+      val funcCode: String =
+        s"""
+          public int $compareFunc(InternalRow a, InternalRow b) {
+            InternalRow i = null;
+            $comparisons
+            return 0;
+          }
+        """
+      addNewFunction(compareFunc, funcCode)
+      s"this.$compareFunc($c1, $c2)"
+    case other if other.isInstanceOf[AtomicType] => s"$c1.compare($c2)"
+    case udt: UserDefinedType[_] => genComp(udt.sqlType, c1, c2)
+    case _ =>
+      throw new IllegalArgumentException("cannot generate compare code for un-comparable type")
+  }
+
   /**
    * get a map of the pair of a place holder and a corresponding comment
    */
@@ -324,6 +427,57 @@ class CodeGenContext {
     s"$prefix${curId.getAndIncrement}"
   }
 
+
+  /**
+   * Splits the generated code of expressions into multiple functions, because function has
+   * 64kb code size limit in JVM
+   *
+   * @param expressions the codes to evaluate expressions.
+   * @param funcName the split function name base.
+   * @param arguments the list of (type, name) of the arguments of the split function.
+   * @param returnType the return type of the split function.
+   * @param makeSplitFunction makes split function body, e.g. add preparation or cleanup.
+   * @param foldFunctions folds the split function calls.
+   */
+  def splitExpressions(
+                        expressions: Seq[String],
+                        funcName: String,
+                        arguments: Seq[(String, String)],
+                        returnType: String = "void",
+                        makeSplitFunction: String => String = identity,
+                        foldFunctions: Seq[String] => String = _.mkString("", ";\n", ";")): String = {
+    val blocks = new ArrayBuffer[String]()
+    val blockBuilder = new StringBuilder()
+    for (code <- expressions) {
+      // We can't know how many byte code will be generated, so use the number of bytes as limit
+      if (blockBuilder.length > 64 * 1000) {
+        blocks.append(blockBuilder.toString())
+        blockBuilder.clear()
+      }
+      blockBuilder.append(code)
+    }
+    blocks.append(blockBuilder.toString())
+
+    if (blocks.length == 1) {
+      // inline execution if only one block
+      blocks.head
+    } else {
+      val func = freshName(funcName)
+      val argString = arguments.map { case (t, name) => s"$t $name" }.mkString(", ")
+      val functions = blocks.zipWithIndex.map { case (body, i) =>
+        val name = s"${func}_$i"
+        val code = s"""
+                      |private $returnType $name($argString) {
+                      |  ${makeSplitFunction(body)}
+                      |}
+         """.stripMargin
+        addNewFunction(name, code)
+        name
+      }
+
+      foldFunctions(functions.map(name => s"$name(${arguments.map(_._2).mkString(", ")})"))
+    }
+  }
 
   /**
    * Returns the specialized code to access a value from `inputRow` at `ordinal`.

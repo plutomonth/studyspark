@@ -5,13 +5,14 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>study.spark</groupId>
-        <artifactId>parent</artifactId>
+        <artifactId>study-spark-parent</artifactId>
         <version>1.0-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>sql</artifactId>
+    <artifactId>study-spark-sql</artifactId>
     <version>1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
 
     <build>
         <plugins>
@@ -34,7 +35,7 @@
         </dependency>
         <dependency>
             <groupId>study.spark</groupId>
-            <artifactId>catalyst</artifactId>
+            <artifactId>study-spark-catalyst</artifactId>
             <version>1.0-SNAPSHOT</version>
         </dependency>
     </dependencies>

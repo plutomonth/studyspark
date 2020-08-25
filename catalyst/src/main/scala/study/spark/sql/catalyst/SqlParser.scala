@@ -1,10 +1,14 @@
 package study.spark.sql.catalyst
 
+import study.spark.sql.AnalysisException
+
 import scala.language.implicitConversions
-import study.spark.sql.catalyst.analysis.{UnresolvedAttribute, UnresolvedStar}
+import study.spark.sql.catalyst.analysis.{UnresolvedAttribute, UnresolvedExtractValue, UnresolvedStar}
 import study.spark.sql.catalyst.expressions._
-import study.spark.sql.catalyst.plans.logical.{InsertIntoTable, LogicalPlan, Subquery}
+import study.spark.sql.catalyst.plans.logical._
 import study.spark.sql.catalyst.util.DataTypeParser
+import study.spark.sql.types.{BooleanType, NullType, StringType}
+import study.spark.unsafe.types.CalendarInterval
 
 /**
  * A very simple SQL parser.  Based loosely on:

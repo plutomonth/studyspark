@@ -126,3 +126,17 @@ object UnresolvedAttribute {
     nameParts.toSeq
   }
 }
+
+
+/**
+ * Extracts a value or values from an Expression
+ *
+ * @param child The expression to extract value from,
+ *              can be Map, Array, Struct or array of Structs.
+ * @param extraction The expression to describe the extraction,
+ *                   can be key of Map, index of Array, field name of Struct.
+ */
+case class UnresolvedExtractValue(child: Expression, extraction: Expression)
+  extends UnaryExpression with Unevaluable {
+  override def dataType: DataType = throw new UnresolvedException(this, "dataType")
+  }

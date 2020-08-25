@@ -1,12 +1,25 @@
 package study.spark.sql.catalyst
 
+import study.spark.sql.catalyst.plans.logical.LogicalPlan
+
+import scala.language.implicitConversions
 import scala.util.parsing.combinator.syntactical.StandardTokenParsers
 import scala.util.parsing.combinator.PackratParsers
 import scala.util.parsing.combinator.lexical.StdLexical
+import scala.util.parsing.input.CharArrayReader.EofCh
+
 
 private[sql] abstract class AbstractSparkSQLParser
   extends StandardTokenParsers with PackratParsers {
 
+  def parse(input: String): LogicalPlan = synchronized {
+    // Initialize the Keywords.
+    initLexical
+    phrase(start)(new lexical.Scanner(input)) match {
+      case Success(plan, _) => plan
+      case failureOrError => sys.error(failureOrError.toString)
+    }
+  }
   /* One time initialization of lexical.This avoid reinitialization of  lexical in parse method */
   protected lazy val initLexical: Unit = lexical.initialize(reservedWords)
 
@@ -15,8 +28,7 @@ private[sql] abstract class AbstractSparkSQLParser
     def parser: Parser[String] = normalize
   }
 
-  // Set the keywords as empty by default, will change that later.
-  override val lexical = new SqlLexical
+  protected implicit def asParser(k: Keyword): Parser[String] = k.parser
 
   // By default, use Reflection to find the reserved words defined in the sub class.
   // NOTICE, Since the Keyword properties defined by sub class, we couldn't call this
@@ -28,9 +40,32 @@ private[sql] abstract class AbstractSparkSQLParser
     .getMethods
     .filter(_.getReturnType == classOf[Keyword])
     .map(_.invoke(this).asInstanceOf[Keyword].normalize)
+
+  // Set the keywords as empty by default, will change that later.
+  override val lexical = new SqlLexical
+
+  protected def start: Parser[LogicalPlan]
+
+  // Returns the whole input string
+  protected lazy val wholeInput: Parser[String] = new Parser[String] {
+    def apply(in: Input): ParseResult[String] =
+      Success(in.source.toString, in.drop(in.source.length()))
+  }
+
+  // Returns the rest of the input string that are not parsed yet
+  protected lazy val restInput: Parser[String] = new Parser[String] {
+    def apply(in: Input): ParseResult[String] =
+      Success(
+        in.source.subSequence(in.offset, in.source.length()).toString,
+        in.drop(in.source.length()))
+  }
 }
 
 class SqlLexical extends StdLexical {
+  case class DecimalLit(chars: String) extends Token {
+    override def toString: String = chars
+  }
+
   /* This is a work around to support the lazy setting */
   def initialize(keywords: Seq[String]): Unit = {
     reserved.clear()
@@ -39,4 +74,56 @@ class SqlLexical extends StdLexical {
 
   /* Normal the keyword string */
   def normalizeKeyword(str: String): String = str.toLowerCase
+
+  delimiters += (
+    "@", "*", "+", "-", "<", "=", "<>", "!=", "<=", ">=", ">", "/", "(", ")",
+    ",", ";", "%", "{", "}", ":", "[", "]", ".", "&", "|", "^", "~", "<=>"
+  )
+
+  protected override def processIdent(name: String) = {
+    val token = normalizeKeyword(name)
+    if (reserved contains token) Keyword(token) else Identifier(name)
+  }
+
+  override lazy val token: Parser[Token] =
+    ( rep1(digit) ~ scientificNotation ^^ { case i ~ s => DecimalLit(i.mkString + s) }
+      | '.' ~> (rep1(digit) ~ scientificNotation) ^^
+      { case i ~ s => DecimalLit("0." + i.mkString + s) }
+      | rep1(digit) ~ ('.' ~> digit.*) ~ scientificNotation ^^
+      { case i1 ~ i2 ~ s => DecimalLit(i1.mkString + "." + i2.mkString + s) }
+      | digit.* ~ identChar ~ (identChar | digit).* ^^
+      { case first ~ middle ~ rest => processIdent((first ++ (middle :: rest)).mkString) }
+      | rep1(digit) ~ ('.' ~> digit.*).? ^^ {
+      case i ~ None => NumericLit(i.mkString)
+      case i ~ Some(d) => DecimalLit(i.mkString + "." + d.mkString)
+    }
+      | '\'' ~> chrExcept('\'', '\n', EofCh).* <~ '\'' ^^
+      { case chars => StringLit(chars mkString "") }
+      | '"' ~> chrExcept('"', '\n', EofCh).* <~ '"' ^^
+      { case chars => StringLit(chars mkString "") }
+      | '`' ~> chrExcept('`', '\n', EofCh).* <~ '`' ^^
+      { case chars => Identifier(chars mkString "") }
+      | EofCh ^^^ EOF
+      | '\'' ~> failure("unclosed string literal")
+      | '"' ~> failure("unclosed string literal")
+      | delim
+      | failure("illegal character")
+      )
+
+  override def identChar: Parser[Elem] = letter | elem('_')
+
+  private lazy val scientificNotation: Parser[String] =
+    (elem('e') | elem('E')) ~> (elem('+') | elem('-')).? ~ rep1(digit) ^^ {
+      case s ~ rest => "e" + s.mkString + rest.mkString
+    }
+
+  override def whitespace: Parser[Any] =
+    ( whitespaceChar
+      | '/' ~ '*' ~ comment
+      | '/' ~ '/' ~ chrExcept(EofCh, '\n').*
+      | '#' ~ chrExcept(EofCh, '\n').*
+      | '-' ~ '-' ~ chrExcept(EofCh, '\n').*
+      | '/' ~ '*' ~ failure("unclosed comment")
+      ).*
 }
+
