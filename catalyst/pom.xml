@@ -10,8 +10,9 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>sql</artifactId>
+    <artifactId>catalyst</artifactId>
     <version>1.0-SNAPSHOT</version>
+
 
     <build>
         <plugins>
@@ -34,11 +35,11 @@
         </dependency>
         <dependency>
             <groupId>study.spark</groupId>
-            <artifactId>catalyst</artifactId>
+            <artifactId>core</artifactId>
             <version>1.0-SNAPSHOT</version>
         </dependency>
-    </dependencies>
 
+    </dependencies>
 
 
 </project>
