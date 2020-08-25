@@ -38,6 +38,10 @@ abstract class Attribute extends LeafExpression with NamedExpression {
  */
 case class ExprId(id: Long, jvmId: UUID)
 
+object ExprId {
+  def apply(id: Long): ExprId = ExprId(id, NamedExpression.jvmId)
+}
+
 /**
  * Used to assign a new name to a computation.
  * For example the SQL expression "1 + 1 AS a" could be represented as follows:

@@ -2,8 +2,9 @@ package study.spark.sql.catalyst.analysis
 
 import study.spark.sql.AnalysisException
 import study.spark.sql.catalyst.errors
-import study.spark.sql.catalyst.expressions.{Attribute, LeafExpression, NamedExpression, Unevaluable}
+import study.spark.sql.catalyst.expressions._
 import study.spark.sql.catalyst.trees.TreeNode
+import study.spark.sql.types.DataType
 
 /**
  * Thrown when an invalid attempt is made to access a property of a tree that has yet to be fully
@@ -17,7 +18,17 @@ class UnresolvedException[TreeType <: TreeNode[_]](tree: TreeType, function: Str
  * "SELECT * FROM ...". A [[Star]] gets automatically expanded during analysis.
  */
 abstract class Star extends LeafExpression with NamedExpression {
+  override def name: String = throw new UnresolvedException(this, "name")
+  override def exprId: ExprId = throw new UnresolvedException(this, "exprId")
+  override def dataType: DataType = throw new UnresolvedException(this, "dataType")
   override def nullable: Boolean = throw new UnresolvedException(this, "nullable")
+/*
+  override def qualifiers: Seq[String] = throw new UnresolvedException(this, "qualifiers")
+  override def toAttribute: Attribute = throw new UnresolvedException(this, "toAttribute")
+  override lazy val resolved = false
+
+  def expand(input: LogicalPlan, resolver: Resolver): Seq[NamedExpression]
+*/
 }
 
 /**
@@ -41,11 +52,32 @@ case class UnresolvedStar(target: Option[Seq[String]]) extends Star with Unevalu
 case class UnresolvedAttribute(nameParts: Seq[String])
   extends Attribute with Unevaluable {
 
+  def name: String =
+    nameParts.map(n => if (n.contains(".")) s"`$n`" else n).mkString(".")
+
+  override def exprId: ExprId = throw new UnresolvedException(this, "exprId")
+  override def dataType: DataType = throw new UnresolvedException(this, "dataType")
   override def nullable: Boolean = throw new UnresolvedException(this, "nullable")
+  //override def qualifiers: Seq[String] = throw new UnresolvedException(this, "qualifiers")
+  //override lazy val resolved = false
+
+  override def newInstance(): UnresolvedAttribute = this
+  //override def withNullability(newNullability: Boolean): UnresolvedAttribute = this
+  override def withQualifiers(newQualifiers: Seq[String]): UnresolvedAttribute = this
+  //override def withName(newName: String): UnresolvedAttribute = UnresolvedAttribute.quoted(newName)
+
+  override def toString: String = s"'$name"
 
 }
 
 object UnresolvedAttribute {
+
+  /**
+    * Creates an [[UnresolvedAttribute]], from a single quoted string (for example using backticks in
+    * HiveQL.  Since the string is consider quoted, no processing is done on the name.
+    */
+  def quoted(name: String): UnresolvedAttribute = new UnresolvedAttribute(Seq(name))
+
   /**
    * Creates an [[UnresolvedAttribute]] from a string in an embedded language.  In this case
    * we treat it as a quoted identifier, except for '.', which must be further quoted using

@@ -1,7 +1,10 @@
 package study.spark.sql.catalyst.plans.logical
 
 import study.spark.Logging
+import study.spark.sql.catalyst.analysis.EliminateSubQueries
+import study.spark.sql.catalyst.expressions.{Alias, BindReferences, ExprId, Expression}
 import study.spark.sql.catalyst.plans.QueryPlan
+import study.spark.sql.catalyst.trees.TreeNode
 
 abstract class LogicalPlan extends QueryPlan[LogicalPlan] with Logging {
   /**
@@ -21,13 +24,41 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with Logging {
    * cardinality is the product of of all child plan's cardinality, i.e. applies in the case
    * of cartesian joins.
    *
-   * [[LeafNode]]s must override this.
+   * LeafNodes must override this.
    */
   def statistics: Statistics = {
     if (children.size == 0) {
       throw new UnsupportedOperationException(s"LeafNode $nodeName must implement statistics.")
     }
     Statistics(sizeInBytes = children.map(_.statistics.sizeInBytes).product)
+  }
+
+  /** Args that have cleaned such that differences in expression id should not affect equality */
+  protected lazy val cleanArgs: Seq[Any] = {
+    val input = children.flatMap(_.output)
+    def cleanExpression(e: Expression) = e match {
+      case a: Alias =>
+        // As the root of the expression, Alias will always take an arbitrary exprId, we need
+        // to erase that for equality testing.
+        val cleanedExprId = Alias(a.child, a.name)(ExprId(-1), a.qualifiers)
+        BindReferences.bindReference(cleanedExprId, input, allowFailures = true)
+      case other => BindReferences.bindReference(other, input, allowFailures = true)
+    }
+
+    productIterator.map {
+      // Children are checked using sameResult above.
+      case tn: TreeNode[_] if containsChild(tn) => null
+      case e: Expression => cleanExpression(e)
+      case s: Option[_] => s.map {
+        case e: Expression => cleanExpression(e)
+        case other => other
+      }
+      case s: Seq[_] => s.map {
+        case e: Expression => cleanExpression(e)
+        case other => other
+      }
+      case other => other
+    }.toSeq
   }
 
 

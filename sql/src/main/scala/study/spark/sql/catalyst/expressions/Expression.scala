@@ -10,13 +10,13 @@ import study.spark.sql.types.DataType
  *
  * If an expression wants to be exposed in the function registry (so users can call it with
  * "name(arguments...)", the concrete implementation must be a case class whose constructor
- * arguments are all Expressions types. See [[Substring]] for an example.
+ * arguments are all Expressions types. See Substring for an example.
  *
  * There are a few important traits:
  *
- * - [[Nondeterministic]]: an expression that is not deterministic.
+ * - Nondeterministic: an expression that is not deterministic.
  * - [[Unevaluable]]: an expression that is not supposed to be evaluated.
- * - [[CodegenFallback]]: an expression that does not have code gen implemented and falls back to
+ * - CodegenFallback: an expression that does not have code gen implemented and falls back to
  *                        interpreted mode.
  *
  * - [[LeafExpression]]: an expression that has no child.
@@ -168,8 +168,70 @@ abstract class UnaryExpression extends Expression {
   def child: Expression
 
   override def children: Seq[Expression] = child :: Nil
+  override def nullable: Boolean = child.nullable
 
+  /**
+    * Default behavior of evaluation according to the default nullability of UnaryExpression.
+    * If subclass of UnaryExpression override nullable, probably should also override this.
+    */
+  override def eval(input: InternalRow): Any = {
+    val value = child.eval(input)
+    if (value == null) {
+      null
+    } else {
+      nullSafeEval(value)
+    }
+  }
 
+  /**
+    * Called by default [[eval]] implementation.  If subclass of UnaryExpression keep the default
+    * nullability, they can override this method to save null-check code.  If we need full control
+    * of evaluation process, we should override [[eval]].
+    */
+  protected def nullSafeEval(input: Any): Any =
+    sys.error(s"UnaryExpressions must override either eval or nullSafeEval")
+
+  /**
+    * Called by unary expressions to generate a code block that returns null if its parent returns
+    * null, and if not not null, use `f` to generate the expression.
+    *
+    * As an example, the following does a boolean inversion (i.e. NOT).
+    * {{{
+    *   defineCodeGen(ctx, ev, c => s"!($c)")
+    * }}}
+    *
+    * @param f function that accepts a variable name and returns Java code to compute the output.
+    */
+  protected def defineCodeGen(
+                               ctx: CodeGenContext,
+                               ev: GeneratedExpressionCode,
+                               f: String => String): String = {
+    nullSafeCodeGen(ctx, ev, eval => {
+      s"${ev.value} = ${f(eval)};"
+    })
+  }
+
+  /**
+    * Called by unary expressions to generate a code block that returns null if its parent returns
+    * null, and if not not null, use `f` to generate the expression.
+    *
+    * @param f function that accepts the non-null evaluation result name of child and returns Java
+    *          code to compute the output.
+    */
+  protected def nullSafeCodeGen(
+                                 ctx: CodeGenContext,
+                                 ev: GeneratedExpressionCode,
+                                 f: String => String): String = {
+    val eval = child.gen(ctx)
+    val resultCode = f(eval.value)
+    eval.code + s"""
+      boolean ${ev.isNull} = ${eval.isNull};
+      ${ctx.javaType(dataType)} ${ev.value} = ${ctx.defaultValue(dataType)};
+      if (!${ev.isNull}) {
+        $resultCode
+      }
+    """
+  }
 }
 
 

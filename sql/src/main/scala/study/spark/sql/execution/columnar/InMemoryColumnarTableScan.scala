@@ -106,4 +106,9 @@ private[sql] case class InMemoryRelation(
     _statistics
   }
 
+  def withOutput(newOutput: Seq[Attribute]): InMemoryRelation = {
+    InMemoryRelation(
+      newOutput, useCompression, batchSize, storageLevel, child, tableName)(
+      _cachedColumnBuffers, statisticsToBePropagated, batchStats)
+  }
 }
