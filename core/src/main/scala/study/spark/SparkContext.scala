@@ -2,11 +2,11 @@ package study.spark
 
 import java.io.Serializable
 import java.util.Properties
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReference}
 
 import org.apache.commons.lang.SerializationUtils
 import study.spark.rdd.{ParallelCollectionRDD, RDD, RDDOperationScope}
-import study.spark.scheduler.TaskScheduler
+import study.spark.scheduler.{DAGScheduler, TaskScheduler}
 import study.spark.util.{CallSite, ClosureCleaner, Utils}
 
 import scala.collection.Map
@@ -20,7 +20,8 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
 
   private var _cleaner: Option[ContextCleaner] = None
   private var _taskScheduler: TaskScheduler = _
-
+  @volatile private var _dagScheduler: DAGScheduler = _
+  private[spark] def dagScheduler: DAGScheduler = _dagScheduler
   private[spark] def cleaner: Option[ContextCleaner] = _cleaner
 
   // Thread Local variable that can be used by users to pass information down the stack
@@ -41,6 +42,13 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
    */
   def getLocalProperty(key: String): String =
     Option(localProperties.get).map(_.getProperty(key)).orNull
+
+
+  private val nextRddId = new AtomicInteger(0)
+
+  /** Register a new RDD, returning its RDD ID */
+  private[spark] def newRddId(): Int = nextRddId.getAndIncrement()
+
 
   /**
    * Set a local property that affects jobs submitted from this thread, such as the
@@ -107,6 +115,38 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
     cleaner.foreach(_.registerAccumulatorForCleanup(acc))
     acc
   }
+
+
+  /**
+   * Capture the current user callsite and return a formatted version for printing. If the user
+   * has overridden the call site using `setCallSite()`, this will return the user's version.
+   */
+  private[spark] def getCallSite(): CallSite = {
+    val callSite = Utils.getCallSite()
+    CallSite(
+      Option(getLocalProperty(CallSite.SHORT_FORM)).getOrElse(callSite.shortForm),
+      Option(getLocalProperty(CallSite.LONG_FORM)).getOrElse(callSite.longForm)
+    )
+  }
+
+
+  /**
+   * Submit a map stage for execution. This is currently an internal API only, but might be
+   * promoted to DeveloperApi in the future.
+   */
+  private[spark] def submitMapStage[K, V, C](dependency: ShuffleDependency[K, V, C])
+  : SimpleFutureAction[MapOutputStatistics] = {
+    assertNotStopped()
+    val callSite = getCallSite()
+    var result: MapOutputStatistics = null
+    val waiter = dagScheduler.submitMapStage(
+      dependency,
+      (r: MapOutputStatistics) => { result = r },
+      callSite,
+      localProperties.get)
+    new SimpleFutureAction[MapOutputStatistics](waiter, result)
+  }
+
 
   /**
    * Execute a block of code in a scope such that all new RDDs created in this body will

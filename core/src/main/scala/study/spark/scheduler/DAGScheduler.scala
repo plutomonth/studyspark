@@ -1,8 +1,12 @@
 package study.spark.scheduler
 
+import java.util.Properties
+import java.util.concurrent.atomic.AtomicInteger
+
+import org.apache.commons.lang3.SerializationUtils
 import study.spark.storage.BlockManagerMaster
-import study.spark.util.Clock
-import study.spark.{Logging, MapOutputTrackerMaster, SparkContext}
+import study.spark.util.{CallSite, Clock, EventLoop, SystemClock}
+import study.spark.{Logging, MapOutputStatistics, MapOutputTrackerMaster, ShuffleDependency, SparkContext, SparkEnv, SparkException}
 
 /**
  * The high-level scheduling layer that implements stage-oriented scheduling. It computes a DAG of
@@ -81,4 +85,46 @@ class DAGScheduler(
     clock: Clock = new SystemClock())
   extends Logging {
 
+  private[scheduler] val nextJobId = new AtomicInteger(0)
+  private[scheduler] val eventProcessLoop = new DAGSchedulerEventProcessLoop(this)
+  /**
+   * Submit a shuffle map stage to run independently and get a JobWaiter object back. The waiter
+   * can be used to block until the the job finishes executing or can be used to cancel the job.
+   * This method is used for adaptive query planning, to run map stages and look at statistics
+   * about their outputs before submitting downstream stages.
+   *
+   * @param dependency the ShuffleDependency to run a map stage for
+   * @param callback function called with the result of the job, which in this case will be a
+   *   single MapOutputStatistics object showing how much data was produced for each partition
+   * @param callSite where in the user program this job was submitted
+   * @param properties scheduler properties to attach to this job, e.g. fair scheduler pool name
+   */
+  def submitMapStage[K, V, C](
+       dependency: ShuffleDependency[K, V, C],
+       callback: MapOutputStatistics => Unit,
+       callSite: CallSite,
+       properties: Properties): JobWaiter[MapOutputStatistics] = {
+
+    val rdd = dependency.rdd
+    val jobId = nextJobId.getAndIncrement()
+    if (rdd.partitions.length == 0) {
+      throw new SparkException("Can't run submitMapStage on RDD with 0 partitions")
+    }
+
+    // We create a JobWaiter with only one "task", which will be marked as complete when the whole
+    // map stage has completed, and will be passed the MapOutputStatistics for that stage.
+    // This makes it easier to avoid race conditions between the user code and the map output
+    // tracker that might result if we told the user the stage had finished, but then they queries
+    // the map output tracker and some node failures had caused the output statistics to be lost.
+    val waiter = new JobWaiter(this, jobId, 1, (i: Int, r: MapOutputStatistics) => callback(r))
+    eventProcessLoop.post(MapStageSubmitted(
+      jobId, dependency, callSite, waiter, SerializationUtils.clone(properties)))
+    waiter
+  }
+
 }
+
+private[scheduler] class DAGSchedulerEventProcessLoop(dagScheduler: DAGScheduler)
+  extends EventLoop[DAGSchedulerEvent]("dag-scheduler-event-loop") with Logging {
+
+  }

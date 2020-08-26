@@ -4,7 +4,7 @@ import javax.annotation.concurrent.GuardedBy
 import java.util.{HashMap => JHashMap, Map => JMap}
 
 import study.spark.sql.catalyst.InternalRow
-import study.spark.{Logging, ShuffleDependency}
+import study.spark.{Logging, MapOutputStatistics, ShuffleDependency, SimpleFutureAction}
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -147,7 +147,7 @@ private[sql] class ExchangeCoordinator(
    * mapOutputStatistics provided by all pre-shuffle stages.
    */
   private[sql] def estimatePartitionStartIndices(
-                                                  mapOutputStatistics: Array[MapOutputStatistics]): Array[Int] = {
+       mapOutputStatistics: Array[MapOutputStatistics]): Array[Int] = {
     // If we have mapOutputStatistics.length < numExchange, it is because we do not submit
     // a stage when the number of partitions of this dependency is 0.
     assert(mapOutputStatistics.length <= numExchanges)

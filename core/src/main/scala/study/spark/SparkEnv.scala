@@ -15,21 +15,27 @@ import study.spark.serializer.Serializer
 
 class SparkEnv (
    val executorId: String,
+/*
    private[spark] val rpcEnv: RpcEnv,
    _actorSystem: ActorSystem, // TODO Remove actorSystem
+*/
    val serializer: Serializer,
    val closureSerializer: Serializer,
-   val cacheManager: CacheManager,
+//   val cacheManager: CacheManager,
    val mapOutputTracker: MapOutputTracker,
+/*
    val shuffleManager: ShuffleManager,
    val broadcastManager: BroadcastManager,
    val blockTransferService: BlockTransferService,
    val blockManager: BlockManager,
+*/
    val securityManager: SecurityManager,
    val sparkFilesDir: String,
+/*
    val metricsSystem: MetricsSystem,
    val memoryManager: MemoryManager,
    val outputCommitCoordinator: OutputCommitCoordinator,
+*/
    val conf: SparkConf) extends Logging {
 
 }

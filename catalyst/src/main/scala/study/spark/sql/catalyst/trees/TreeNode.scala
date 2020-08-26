@@ -63,6 +63,55 @@ abstract class TreeNode[BaseType <: TreeNode[BaseType]] extends Product {
   /** Returns the name of this type of TreeNode.  Defaults to the class name. */
   def nodeName: String = getClass.getSimpleName
 
+
+  /** Returns a string representing the arguments to this node, minus any children */
+  def argString: String = productIterator.flatMap {
+    case tn: TreeNode[_] if containsChild(tn) => Nil
+    case tn: TreeNode[_] => s"${tn.simpleString}" :: Nil
+    case seq: Seq[BaseType] if seq.toSet.subsetOf(children.toSet) => Nil
+    case seq: Seq[_] => seq.mkString("[", ",", "]") :: Nil
+    case set: Set[_] => set.mkString("{", ",", "}") :: Nil
+    case other => other :: Nil
+  }.mkString(", ")
+
+  /** String representation of this node without any children */
+  def simpleString: String = s"$nodeName $argString".trim
+
+  /** Returns a string representation of the nodes in this tree */
+  def treeString: String = generateTreeString(0, Nil, new StringBuilder).toString
+
+
+  /**
+   * Appends the string represent of this node and its children to the given StringBuilder.
+   *
+   * The `i`-th element in `lastChildren` indicates whether the ancestor of the current node at
+   * depth `i + 1` is the last child of its own parent node.  The depth of the root node is 0, and
+   * `lastChildren` for the root node should be empty.
+   */
+  protected def generateTreeString(
+                                    depth: Int, lastChildren: Seq[Boolean], builder: StringBuilder): StringBuilder = {
+    if (depth > 0) {
+      lastChildren.init.foreach { isLast =>
+        val prefixFragment = if (isLast) "   " else ":  "
+        builder.append(prefixFragment)
+      }
+
+      val branch = if (lastChildren.last) "+- " else ":- "
+      builder.append(branch)
+    }
+
+    builder.append(simpleString)
+    builder.append("\n")
+
+    if (children.nonEmpty) {
+      children.init.foreach(_.generateTreeString(depth + 1, lastChildren :+ false, builder))
+      children.last.generateTreeString(depth + 1, lastChildren :+ true, builder)
+    }
+
+    builder
+  }
+
+
   /**
    * Creates a copy of this type of tree node after a transformation.
    * Must be overridden by child classes that have constructor arguments

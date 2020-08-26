@@ -1,6 +1,6 @@
 package study.spark.rdd
 
-import study.spark.TaskContext
+import study.spark.{Partition, TaskContext}
 
 import scala.reflect.ClassTag
 
@@ -13,4 +13,5 @@ private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
    preservesPartitioning: Boolean = false)
   extends RDD[U](prev) {
 
+  override def getPartitions: Array[Partition] = firstParent[T].partitions
 }

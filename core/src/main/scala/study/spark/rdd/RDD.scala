@@ -41,6 +41,22 @@ abstract class RDD[T: ClassTag](
 
    private[spark] var checkpointData: Option[RDDCheckpointData[T]] = None
 
+   // Our dependencies and partitions will be gotten by calling subclass's methods below, and will
+   // be overwritten when we're checkpointed
+   private var dependencies_ : Seq[Dependency[_]] = null
+   /**
+    * Get the list of dependencies of this RDD, taking into account whether the
+    * RDD is checkpointed or not.
+    */
+   final def dependencies: Seq[Dependency[_]] = {
+      checkpointRDD.map(r => List(new OneToOneDependency(r))).getOrElse {
+         if (dependencies_ == null) {
+            dependencies_ = getDependencies
+         }
+         dependencies_
+      }
+   }
+
    /** An Option holding our checkpoint RDD, if we are checkpointed */
    private def checkpointRDD: Option[CheckpointRDD[T]] = checkpointData.flatMap(_.checkpointRDD)
 
@@ -54,6 +70,9 @@ abstract class RDD[T: ClassTag](
       }
       _sc
    }
+
+   /** A unique ID for this RDD (within its SparkContext). */
+   val id: Int = sc.newRddId()
 
    /** Construct an RDD with just a one-to-one dependency on one parent */
    def this(@transient oneParent: RDD[_]) =
@@ -84,6 +103,14 @@ abstract class RDD[T: ClassTag](
     */
    protected def getPartitions: Array[Partition]
 
+
+   /**
+    * Implemented by subclasses to return how this RDD depends on parent RDDs. This method will only
+    * be called once, so it is safe to implement a time-consuming computation in it.
+    */
+   protected def getDependencies: Seq[Dependency[_]] = deps
+
+
    /**
     * Get the array of partitions of this RDD, taking into account whether the
     * RDD is checkpointed or not.
@@ -95,6 +122,11 @@ abstract class RDD[T: ClassTag](
          }
          partitions_
       }
+   }
+
+   /** Returns the first parent RDD */
+   protected[spark] def firstParent[U: ClassTag]: RDD[U] = {
+      dependencies.head.rdd.asInstanceOf[RDD[U]]
    }
 
    /**
