@@ -14,3 +14,31 @@ case class BitwiseNot(child: Expression) extends UnaryExpression with ExpectsInp
     defineCodeGen(ctx, ev, c => s"(${ctx.javaType(dataType)}) ~($c)")
   }
 }
+
+/**
+ * A function that calculates bitwise and(&) of two numbers.
+ *
+ * Code generation inherited from BinaryArithmetic.
+ */
+case class BitwiseAnd(left: Expression, right: Expression) extends BinaryArithmetic {
+  override def symbol: String = "&"
+}
+
+/**
+ * A function that calculates bitwise or(|) of two numbers.
+ *
+ * Code generation inherited from BinaryArithmetic.
+ */
+case class BitwiseOr(left: Expression, right: Expression) extends BinaryArithmetic {
+
+  override def symbol: String = "|"
+}
+
+/**
+ * A function that calculates bitwise xor of two numbers.
+ *
+ * Code generation inherited from BinaryArithmetic.
+ */
+case class BitwiseXor(left: Expression, right: Expression) extends BinaryArithmetic {
+  override def symbol: String = "^"
+}

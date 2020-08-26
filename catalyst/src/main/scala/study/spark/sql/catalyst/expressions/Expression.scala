@@ -1,6 +1,7 @@
 package study.spark.sql.catalyst.expressions
 
 import study.spark.sql.catalyst.InternalRow
+import study.spark.sql.catalyst.analysis.TypeCheckResult
 import study.spark.sql.catalyst.expressions.codegen.{CodeGenContext, GeneratedExpressionCode}
 import study.spark.sql.catalyst.trees.TreeNode
 import study.spark.sql.types.DataType
@@ -27,6 +28,18 @@ import study.spark.sql.types.DataType
  *
  */
 abstract class Expression extends TreeNode[Expression] {
+  /**
+   * Returns true when an expression is a candidate for static evaluation before the query is
+   * executed.
+   *
+   * The following conditions are used to determine suitability for constant folding:
+   *  - A [[Coalesce]] is foldable if all of its children are foldable
+   *  - A [[BinaryExpression]] is foldable if its both left and right child are foldable
+   *  - A [[Not]], [[IsNull]], or [[IsNotNull]] is foldable if its child is foldable
+   *  - A [[Literal]] is foldable
+   *  - A [[Cast]] or [[UnaryMinus]] is foldable if its child is foldable
+   */
+  def foldable: Boolean = false
 
   /**
    * Returns true when the current expression always return the same result for fixed inputs from
@@ -134,7 +147,28 @@ abstract class Expression extends TreeNode[Expression] {
 
     computeHash(this.productIterator.toSeq)
   }
+  /**
+   * Returns `true` if this expression and all its children have been resolved to a specific schema
+   * and input data types checking passed, and `false` if it still contains any unresolved
+   * placeholders or has data types mismatch.
+   * Implementations of expressions should override this if the resolution of this type of
+   * expression involves more than just the resolution of its children and type checking.
+   */
+  lazy val resolved: Boolean = childrenResolved && checkInputDataTypes().isSuccess
 
+  /**
+   * Checks the input data types, returns `TypeCheckResult.success` if it's valid,
+   * or returns a `TypeCheckResult` with an error message if invalid.
+   * Note: it's not valid to call this method until `childrenResolved == true`.
+   */
+  def checkInputDataTypes(): TypeCheckResult = TypeCheckResult.TypeCheckSuccess
+
+
+  /**
+   * Returns true if  all the children of this expression have been resolved to a specific schema
+   * and false if any still contains any unresolved placeholders.
+   */
+  def childrenResolved: Boolean = children.forall(_.resolved)
 
 }
 
@@ -334,4 +368,18 @@ abstract class BinaryExpression extends Expression {
  */
 abstract class BinaryOperator extends BinaryExpression with ExpectsInputTypes {
     def symbol: String
+}
+
+/**
+ * An expression that is nondeterministic.
+ */
+trait Nondeterministic extends Expression {
+
+  private[this] var initialized = false
+  protected def initInternal(): Unit
+
+  final def setInitialValues(): Unit = {
+    initInternal()
+    initialized = true
+  }
 }

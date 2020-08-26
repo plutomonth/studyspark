@@ -239,6 +239,22 @@ class CodeGenContext {
     case _ => "Object"
   }
 
+  /**
+   * Returns the boxed type in Java.
+   */
+  def boxedType(jt: String): String = jt match {
+    case JAVA_BOOLEAN => "Boolean"
+    case JAVA_BYTE => "Byte"
+    case JAVA_SHORT => "Short"
+    case JAVA_INT => "Integer"
+    case JAVA_LONG => "Long"
+    case JAVA_FLOAT => "Float"
+    case JAVA_DOUBLE => "Double"
+    case other => other
+  }
+
+
+  def boxedType(dt: DataType): String = boxedType(javaType(dt))
 
   /**
    * Holding expressions' mutable states like `MonotonicallyIncreasingID.count` as a

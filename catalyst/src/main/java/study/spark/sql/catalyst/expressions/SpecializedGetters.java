@@ -7,4 +7,5 @@ public interface SpecializedGetters {
 
     Object get(int ordinal, DataType dataType);
 
+    long getLong(int ordinal);
 }

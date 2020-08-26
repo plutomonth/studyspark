@@ -98,3 +98,20 @@ abstract class UnaryNode extends LogicalPlan {
 
   override def children: Seq[LogicalPlan] = child :: Nil
 }
+
+/**
+ * A logical plan node with no children.
+ */
+abstract class LeafNode extends LogicalPlan {
+  override def children: Seq[LogicalPlan] = Nil
+}
+
+/**
+ * A logical plan node with a left and right child.
+ */
+abstract class BinaryNode extends LogicalPlan {
+  def left: LogicalPlan
+  def right: LogicalPlan
+
+  override def children: Seq[LogicalPlan] = Seq(left, right)
+}

@@ -4,7 +4,9 @@ import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.KryoSerializable;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
+import study.spark.sql.types.*;
 import study.spark.unsafe.Platform;
+import study.spark.unsafe.bitset.BitSetMethods;
 
 import java.io.Externalizable;
 import java.io.IOException;
@@ -52,6 +54,60 @@ public final class UnsafeRow extends MutableRow implements Externalizable, KryoS
     /** The width of the null tracking bit set, in bytes */
     private int bitSetWidthInBytes;
 
+    private long getFieldOffset(int ordinal) {
+        return baseOffset + bitSetWidthInBytes + ordinal * 8L;
+    }
+
+    private void assertIndexIsValid(int index) {
+        assert index >= 0 : "index (" + index + ") should >= 0";
+        assert index < numFields : "index (" + index + ") should < " + numFields;
+    }
+
+
+    @Override
+    public Object get(int ordinal, DataType dataType) {
+        if (isNullAt(ordinal) || dataType instanceof NullType) {
+            return null;
+        } /*else if (dataType instanceof BooleanType) {
+            return getBoolean(ordinal);
+        } else if (dataType instanceof ByteType) {
+            return getByte(ordinal);
+        } else if (dataType instanceof ShortType) {
+            return getShort(ordinal);
+        } else if (dataType instanceof IntegerType) {
+            return getInt(ordinal);
+        } */else if (dataType instanceof LongType) {
+            return getLong(ordinal);
+        } /*else if (dataType instanceof FloatType) {
+            return getFloat(ordinal);
+        } else if (dataType instanceof DoubleType) {
+            return getDouble(ordinal);
+        } else if (dataType instanceof DecimalType) {
+            DecimalType dt = (DecimalType) dataType;
+            return getDecimal(ordinal, dt.precision(), dt.scale());
+        } else if (dataType instanceof DateType) {
+            return getInt(ordinal);
+        } else if (dataType instanceof TimestampType) {
+            return getLong(ordinal);
+        } else if (dataType instanceof BinaryType) {
+            return getBinary(ordinal);
+        } else if (dataType instanceof StringType) {
+            return getUTF8String(ordinal);
+        } else if (dataType instanceof CalendarIntervalType) {
+            return getInterval(ordinal);
+        } else if (dataType instanceof StructType) {
+            return getStruct(ordinal, ((StructType) dataType).size());
+        } else if (dataType instanceof ArrayType) {
+            return getArray(ordinal);
+        } else if (dataType instanceof MapType) {
+            return getMap(ordinal);
+        }*/ else if (dataType instanceof UserDefinedType) {
+            return get(ordinal, ((UserDefinedType)dataType).sqlType());
+        } else {
+            throw new UnsupportedOperationException("Unsupported data type " + dataType.simpleString());
+        }
+    }
+
 
     /**
      * Returns the underlying bytes for this UnsafeRow.
@@ -65,6 +121,18 @@ public final class UnsafeRow extends MutableRow implements Externalizable, KryoS
             Platform.copyMemory(baseObject, baseOffset, bytes, Platform.BYTE_ARRAY_OFFSET, sizeInBytes);
             return bytes;
         }
+    }
+
+    @Override
+    public long getLong(int ordinal) {
+        assertIndexIsValid(ordinal);
+        return Platform.getLong(baseObject, getFieldOffset(ordinal));
+    }
+
+    @Override
+    public boolean isNullAt(int ordinal) {
+        assertIndexIsValid(ordinal);
+        return BitSetMethods.isSet(baseObject, baseOffset, ordinal);
     }
 
     @Override

@@ -45,7 +45,7 @@ import study.spark.sql.catalyst.expressions.Attribute
  * //   StructType(List(StructField(b,LongType,false), StructField(c,BooleanType,false)))
  * }}}
  *
- * A [[study.spark.sql.Row]] object is used as a value of the StructType.
+ * A study.spark.sql.Row object is used as a value of the StructType.
  * Example:
  * {{{
  * import org.apache.spark.sql._
@@ -65,12 +65,44 @@ import study.spark.sql.catalyst.expressions.Attribute
  * }}}
  */
 case class StructType(fields: Array[StructField]) extends DataType with Seq[StructField] {
+  /** No-arg constructor for kryo. */
+  def this() = this(Array.empty[StructField])
+
+  override def iterator: Iterator[StructField] = fields.iterator
+
+  override def apply(fieldIndex: Int): StructField = fields(fieldIndex)
+
+
+  /**
+   * The default size of a value of the StructType is the total default sizes of all field types.
+   */
+  override def defaultSize: Int = fields.map(_.dataType.defaultSize).sum
+
+  override private[spark] def asNullable: StructType = {
+    val newFields = fields.map {
+      case StructField(name, dataType, nullable, metadata) =>
+        StructField(name, dataType.asNullable, nullable = true, metadata)
+    }
+
+    StructType(newFields)
+  }
+
+  override def length: Int = fields.length
 
 }
 
 object StructType extends AbstractDataType {
 
+  override private[sql] def defaultConcreteType: DataType = new StructType
+
+  override private[sql] def acceptsType(other: DataType): Boolean = {
+    other.isInstanceOf[StructType]
+  }
+
+  override private[sql] def simpleString: String = "struct"
+
   def apply(fields: Seq[StructField]): StructType = StructType(fields.toArray)
+
 
   protected[sql] def fromAttributes(attributes: Seq[Attribute]): StructType =
     StructType(attributes.map(a => StructField(a.name, a.dataType, a.nullable, a.metadata)))

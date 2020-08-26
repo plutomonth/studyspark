@@ -27,6 +27,8 @@ case class BoundReference(ordinal: Int, dataType: DataType, nullable: Boolean)
     """
   }
 
+  override def toAttribute: Attribute = throw new UnsupportedOperationException
+
   // Use special getter for primitive types (for UnsafeRow)
   override def eval(input: InternalRow): Any = {
     if (input.isNullAt(ordinal)) {

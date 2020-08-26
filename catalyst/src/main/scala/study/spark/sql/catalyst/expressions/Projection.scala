@@ -37,3 +37,4 @@ object UnsafeProjection {
     GenerateUnsafeProjection.generate(unsafeExprs)
   }
 }
+

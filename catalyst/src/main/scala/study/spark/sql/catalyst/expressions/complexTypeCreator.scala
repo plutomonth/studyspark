@@ -1,6 +1,7 @@
 package study.spark.sql.catalyst.expressions
 
 import study.spark.sql.catalyst.InternalRow
+import study.spark.sql.catalyst.expressions.codegen.{CodeGenContext, GenerateUnsafeProjection, GeneratedExpressionCode}
 import study.spark.sql.types.{Metadata, StructField, StructType}
 import study.spark.unsafe.types.UTF8String
 
@@ -25,6 +26,28 @@ case class CreateStruct(children: Seq[Expression]) extends Expression {
   override def eval(input: InternalRow): Any = {
     InternalRow(children.map(_.eval(input)): _*)
   }
+
+
+  override def genCode(ctx: CodeGenContext, ev: GeneratedExpressionCode): String = {
+    val rowClass = classOf[GenericInternalRow].getName
+    val values = ctx.freshName("values")
+    s"""
+      boolean ${ev.isNull} = false;
+      final Object[] $values = new Object[${children.size}];
+    """ +
+      children.zipWithIndex.map { case (e, i) =>
+        val eval = e.gen(ctx)
+        eval.code + s"""
+          if (${eval.isNull}) {
+            $values[$i] = null;
+          } else {
+            $values[$i] = ${eval.value};
+          }
+         """
+      }.mkString("\n") +
+      s"final InternalRow ${ev.value} = new $rowClass($values);"
+  }
+
 }
 
 /**
@@ -50,6 +73,12 @@ case class CreateStructUnsafe(children: Seq[Expression]) extends Expression {
     InternalRow(children.map(_.eval(input)): _*)
   }
 
+  override def genCode(ctx: CodeGenContext, ev: GeneratedExpressionCode): String = {
+    val eval = GenerateUnsafeProjection.createCode(ctx, children)
+    ev.isNull = eval.isNull
+    ev.value = eval.value
+    eval.code
+  }
 }
 
 /**
@@ -74,6 +103,26 @@ case class CreateNamedStruct(children: Seq[Expression]) extends Expression {
   }
   override def eval(input: InternalRow): Any = {
     InternalRow(valExprs.map(_.eval(input)): _*)
+  }
+
+  override def genCode(ctx: CodeGenContext, ev: GeneratedExpressionCode): String = {
+    val rowClass = classOf[GenericInternalRow].getName
+    val values = ctx.freshName("values")
+    s"""
+      boolean ${ev.isNull} = false;
+      final Object[] $values = new Object[${valExprs.size}];
+    """ +
+      valExprs.zipWithIndex.map { case (e, i) =>
+        val eval = e.gen(ctx)
+        eval.code + s"""
+          if (${eval.isNull}) {
+            $values[$i] = null;
+          } else {
+            $values[$i] = ${eval.value};
+          }
+         """
+      }.mkString("\n") +
+      s"final InternalRow ${ev.value} = new $rowClass($values);"
   }
 
 }
@@ -102,4 +151,13 @@ case class CreateNamedStructUnsafe(children: Seq[Expression]) extends Expression
   override def eval(input: InternalRow): Any = {
     InternalRow(valExprs.map(_.eval(input)): _*)
   }
+
+
+  override def genCode(ctx: CodeGenContext, ev: GeneratedExpressionCode): String = {
+    val eval = GenerateUnsafeProjection.createCode(ctx, valExprs)
+    ev.isNull = eval.isNull
+    ev.value = eval.value
+    eval.code
+  }
+
 }

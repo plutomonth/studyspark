@@ -1,6 +1,6 @@
 package study.spark.rdd
 
-import study.spark.{Dependency, Logging, OneToOneDependency, SparkContext, SparkException, TaskContext}
+import study.spark.{Dependency, Logging, OneToOneDependency, Partition, SparkContext, SparkException, TaskContext}
 
 import scala.reflect.ClassTag
 
@@ -8,11 +8,11 @@ import scala.reflect.ClassTag
  * A Resilient Distributed Dataset (RDD), the basic abstraction in Spark. Represents an immutable,
  * partitioned collection of elements that can be operated on in parallel. This class contains the
  * basic operations available on all RDDs, such as `map`, `filter`, and `persist`. In addition,
- * [[study.spark.rdd.PairRDDFunctions]] contains operations available only on RDDs of key-value
+ * study.spark.rdd.PairRDDFunctions contains operations available only on RDDs of key-value
  * pairs, such as `groupByKey` and `join`;
- * [[study.spark.rdd.DoubleRDDFunctions]] contains operations available only on RDDs of
+ * study.spark.rdd.DoubleRDDFunctions contains operations available only on RDDs of
  * Doubles; and
- * [[study.spark.rdd.SequenceFileRDDFunctions]] contains operations available on RDDs that
+ * study.spark.rdd.SequenceFileRDDFunctions contains operations available on RDDs that
  * can be saved as SequenceFiles.
  * All operations are automatically available on any RDD of the right type (e.g. RDD[(Int, Int)]
  * through implicit.
@@ -37,6 +37,12 @@ abstract class RDD[T: ClassTag](
      @transient private var deps: Seq[Dependency[_]]
    ) extends Serializable with Logging {
 
+   @transient private var partitions_ : Array[Partition] = null
+
+   private[spark] var checkpointData: Option[RDDCheckpointData[T]] = None
+
+   /** An Option holding our checkpoint RDD, if we are checkpointed */
+   private def checkpointRDD: Option[CheckpointRDD[T]] = checkpointData.flatMap(_.checkpointRDD)
 
    private def sc: SparkContext = {
       if (_sc == null) {
@@ -70,6 +76,25 @@ abstract class RDD[T: ClassTag](
          this,
          (context: TaskContext, index: Int, iter: Iterator[T]) => cleanedF(iter),
          preservesPartitioning)
+   }
+
+   /**
+    * Implemented by subclasses to return the set of partitions in this RDD. This method will only
+    * be called once, so it is safe to implement a time-consuming computation in it.
+    */
+   protected def getPartitions: Array[Partition]
+
+   /**
+    * Get the array of partitions of this RDD, taking into account whether the
+    * RDD is checkpointed or not.
+    */
+   final def partitions: Array[Partition] = {
+      checkpointRDD.map(_.partitions).getOrElse {
+         if (partitions_ == null) {
+            partitions_ = getPartitions
+         }
+         partitions_
+      }
    }
 
    /**

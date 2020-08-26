@@ -13,5 +13,7 @@ case class StructField(
     dataType: DataType,
     nullable: Boolean = true,
     metadata: Metadata = Metadata.empty) {
+  /** No-arg constructor for kryo. */
+  protected def this() = this(null, null)
 
 }

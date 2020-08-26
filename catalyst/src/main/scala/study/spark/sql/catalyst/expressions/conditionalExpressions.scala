@@ -19,6 +19,8 @@ case class CaseKeyWhen(key: Expression, branches: Seq[Expression])
   // Use private[this] Array to speed up evaluation.
   @transient private[this] lazy val branchesArr = branches.toArray
 
+  override def children: Seq[Expression] = key +: branches
+
   private def evalElse(input: InternalRow): Any = {
     if (branchesArr.length % 2 == 0) {
       null

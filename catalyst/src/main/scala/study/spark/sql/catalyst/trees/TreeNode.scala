@@ -118,6 +118,14 @@ abstract class TreeNode[BaseType <: TreeNode[BaseType]] extends Product {
     transformDown(rule)
   }
 
+  /**
+   * Runs the given function on this node and then recursively on [[children]].
+   * @param f the function to be applied to each node in the tree.
+   */
+  def foreach(f: BaseType => Unit): Unit = {
+    f(this)
+    children.foreach(_.foreach(f))
+  }
 
   /**
    * Returns a copy of this node where `rule` has been recursively applied to it and all of its

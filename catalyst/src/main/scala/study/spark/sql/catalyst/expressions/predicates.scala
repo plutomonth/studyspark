@@ -1,5 +1,6 @@
 package study.spark.sql.catalyst.expressions
 
+import study.spark.sql.catalyst.InternalRow
 import study.spark.sql.catalyst.expressions.codegen.{CodeGenContext, GeneratedExpressionCode}
 import study.spark.sql.types.{BooleanType, DataType, DoubleType, FloatType}
 
@@ -114,4 +115,63 @@ case class And(left: Expression, right: Expression) extends BinaryOperator with 
       }
      """
   }
+}
+
+/**
+ * Evaluates to `true` if `list` contains `value`.
+ */
+case class In(value: Expression, list: Seq[Expression]) extends Predicate
+  with ImplicitCastInputTypes {
+
+  override def children: Seq[Expression] = value +: list
+  override def nullable: Boolean = children.exists(_.nullable)
+
+  override def eval(input: InternalRow): Any = {
+    val evaluatedValue = value.eval(input)
+    if (evaluatedValue == null) {
+      null
+    } else {
+      var hasNull = false
+      list.foreach { e =>
+        val v = e.eval(input)
+        if (v == evaluatedValue) {
+          return true
+        } else if (v == null) {
+          hasNull = true
+        }
+      }
+      if (hasNull) {
+        null
+      } else {
+        false
+      }
+    }
+  }
+
+
+  override def genCode(ctx: CodeGenContext, ev: GeneratedExpressionCode): String = {
+    val valueGen = value.gen(ctx)
+    val listGen = list.map(_.gen(ctx))
+    val listCode = listGen.map(x =>
+      s"""
+        if (!${ev.value}) {
+          ${x.code}
+          if (${x.isNull}) {
+            ${ev.isNull} = true;
+          } else if (${ctx.genEqual(value.dataType, valueGen.value, x.value)}) {
+            ${ev.isNull} = false;
+            ${ev.value} = true;
+          }
+        }
+       """).mkString("\n")
+    s"""
+      ${valueGen.code}
+      boolean ${ev.value} = false;
+      boolean ${ev.isNull} = ${valueGen.isNull};
+      if (!${ev.isNull}) {
+        $listCode
+      }
+    """
+  }
+
 }

@@ -1,9 +1,9 @@
 package study.spark.sql
 
 import study.spark.sql.catalyst.SqlParser
-import study.spark.sql.catalyst.plans.logical.{Command, InsertIntoTable, LogicalPlan}
+import study.spark.sql.catalyst.plans.logical.{Command, Filter, InsertIntoTable, LogicalPlan}
 import study.spark.sql.execution.datasources.CreateTableUsingAsSelect
-import study.spark.sql.execution.{QueryExecution, Queryable}
+import study.spark.sql.execution.{LogicalRDD, QueryExecution, Queryable}
 
 private[sql] object DataFrame {
   def apply(sqlContext: SQLContext, logicalPlan: LogicalPlan): DataFrame = {
@@ -68,6 +68,11 @@ class DataFrame private[sql](
     */
   def filter(conditionExpr: String): DataFrame = {
     filter(Column(SqlParser.parseExpression(conditionExpr)))
+  }
+
+  /** A convenient function to wrap a logical plan and produce a DataFrame. */
+  @inline private def withPlan(logicalPlan: => LogicalPlan): DataFrame = {
+    new DataFrame(sqlContext, logicalPlan)
   }
 
 }

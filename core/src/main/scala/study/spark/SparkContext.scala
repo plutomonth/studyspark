@@ -2,16 +2,24 @@ package study.spark
 
 import java.io.Serializable
 import java.util.Properties
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 
 import org.apache.commons.lang.SerializationUtils
-import study.spark.util.ClosureCleaner
+import study.spark.rdd.{ParallelCollectionRDD, RDD, RDDOperationScope}
+import study.spark.scheduler.TaskScheduler
+import study.spark.util.{CallSite, ClosureCleaner, Utils}
 
+import scala.collection.Map
 import scala.collection.generic.Growable
 import scala.reflect.ClassTag
 
-class SparkContext(config: SparkConf) extends Logging {
+class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationClient  {
+
+  // The call site where this SparkContext was constructed.
+  private val creationSite: CallSite = Utils.getCallSite()
 
   private var _cleaner: Option[ContextCleaner] = None
+  private var _taskScheduler: TaskScheduler = _
 
   private[spark] def cleaner: Option[ContextCleaner] = _cleaner
 
@@ -24,6 +32,8 @@ class SparkContext(config: SparkConf) extends Logging {
     }
     override protected def initialValue(): Properties = new Properties()
   }
+
+  private[spark] def taskScheduler: TaskScheduler = _taskScheduler
 
   /**
    * Get a local property set in this thread, or null if it is missing. See
@@ -41,6 +51,29 @@ class SparkContext(config: SparkConf) extends Logging {
       localProperties.get.remove(key)
     } else {
       localProperties.get.setProperty(key, value)
+    }
+  }
+  private[spark] val stopped: AtomicBoolean = new AtomicBoolean(false)
+
+  private def assertNotStopped(): Unit = {
+    if (stopped.get()) {
+      val activeContext = SparkContext.activeContext.get()
+      val activeCreationSite =
+        if (activeContext == null) {
+          "(No active SparkContext.)"
+        } else {
+          activeContext.creationSite.longForm
+        }
+      throw new IllegalStateException(
+        s"""Cannot call methods on a stopped SparkContext.
+           |This stopped SparkContext was created at:
+           |
+           |${creationSite.longForm}
+           |
+           |The currently active SparkContext was created at:
+           |
+           |$activeCreationSite
+         """.stripMargin)
     }
   }
 
@@ -75,9 +108,48 @@ class SparkContext(config: SparkConf) extends Logging {
     acc
   }
 
+  /**
+   * Execute a block of code in a scope such that all new RDDs created in this body will
+   * be part of the same scope. For more detail, see {{org.apache.spark.rdd.RDDOperationScope}}.
+   *
+   * Note: Return statements are NOT allowed in the given body.
+   */
+  private[spark] def withScope[U](body: => U): U = RDDOperationScope.withScope[U](this)(body)
+
+  /** Default level of parallelism to use when not given by user (e.g. parallelize and makeRDD). */
+  def defaultParallelism: Int = {
+    assertNotStopped()
+    taskScheduler.defaultParallelism
+  }
+
+
+  /** Distribute a local Scala collection to form an RDD.
+   *
+   * @note Parallelize acts lazily. If `seq` is a mutable collection and is altered after the call
+   * to parallelize and before the first action on the RDD, the resultant RDD will reflect the
+   * modified collection. Pass a copy of the argument to avoid this.
+   * @note avoid using `parallelize(Seq())` to create an empty `RDD`. Consider `emptyRDD` for an
+   * RDD with no partitions, or `parallelize(Seq[T]())` for an RDD of `T` with empty partitions.
+   */
+  def parallelize[T: ClassTag](
+                                seq: Seq[T],
+                                numSlices: Int = defaultParallelism): RDD[T] = withScope {
+    assertNotStopped()
+    new ParallelCollectionRDD[T](this, seq, numSlices, Map[Int, Seq[String]]())
+  }
+
 }
 
 object SparkContext extends Logging {
   private[spark] val RDD_SCOPE_KEY = "spark.rdd.scope"
   private[spark] val RDD_SCOPE_NO_OVERRIDE_KEY = "spark.rdd.scope.noOverride"
+
+  /**
+   * The active, fully-constructed SparkContext.  If no SparkContext is active, then this is `null`.
+   *
+   * Access to this field is guarded by SPARK_CONTEXT_CONSTRUCTOR_LOCK.
+   */
+  private val activeContext: AtomicReference[SparkContext] =
+    new AtomicReference[SparkContext](null)
+
 }

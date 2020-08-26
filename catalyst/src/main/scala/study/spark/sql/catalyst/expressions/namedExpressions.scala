@@ -3,6 +3,7 @@ package study.spark.sql.catalyst.expressions
 import java.util.UUID
 
 import study.spark.sql.catalyst.InternalRow
+import study.spark.sql.catalyst.analysis.UnresolvedAttribute
 import study.spark.sql.catalyst.expressions.codegen.{CodeGenContext, GeneratedExpressionCode}
 import study.spark.sql.types.{DataType, Metadata}
 
@@ -21,12 +22,16 @@ trait NamedExpression extends Expression {
   def exprId: ExprId
   /** Returns the metadata when an expression is a reference to another expression with metadata. */
   def metadata: Metadata = Metadata.empty
+
+  def toAttribute: Attribute
 }
 
 abstract class Attribute extends LeafExpression with NamedExpression {
   def newInstance(): Attribute
-
+  def withNullability(newNullability: Boolean): Attribute
   def withQualifiers(newQualifiers: Seq[String]): Attribute
+
+  override def toAttribute: Attribute = this
 }
 
 /**
@@ -62,11 +67,23 @@ case class Alias(child: Expression, name: String)(
   val explicitMetadata: Option[Metadata] = None)
   extends UnaryExpression with NamedExpression {
 
+  // Alias(Generator, xx) need to be transformed into Generate(generator, ...)
+  override lazy val resolved =
+    childrenResolved && checkInputDataTypes().isSuccess && !child.isInstanceOf[Generator]
+
   override def eval(input: InternalRow): Any = child.eval(input)
 
   override def dataType: DataType = child.dataType
   override def nullable: Boolean = child.nullable
   override protected def genCode(ctx: CodeGenContext, ev: GeneratedExpressionCode): String = ""
+
+  override def toAttribute: Attribute = {
+    if (resolved) {
+      AttributeReference(name, child.dataType, child.nullable, metadata)(exprId, qualifiers)
+    } else {
+      UnresolvedAttribute(name)
+    }
+  }
 
 }
 
@@ -92,4 +109,29 @@ case class AttributeReference(
      val qualifiers: Seq[String] = Nil)
   extends Attribute with Unevaluable {
 
+  override def newInstance(): AttributeReference =
+    AttributeReference(name, dataType, nullable, metadata)(qualifiers = qualifiers)
+
+  /**
+   * Returns a copy of this [[AttributeReference]] with changed nullability.
+   */
+  override def withNullability(newNullability: Boolean): AttributeReference = {
+    if (nullable == newNullability) {
+      this
+    } else {
+      AttributeReference(name, dataType, newNullability, metadata)(exprId, qualifiers)
+    }
   }
+
+  /**
+   * Returns a copy of this [[AttributeReference]] with new qualifiers.
+   */
+  override def withQualifiers(newQualifiers: Seq[String]): AttributeReference = {
+    if (newQualifiers.toSet == qualifiers.toSet) {
+      this
+    } else {
+      AttributeReference(name, dataType, nullable, metadata)(exprId, newQualifiers)
+    }
+  }
+
+}

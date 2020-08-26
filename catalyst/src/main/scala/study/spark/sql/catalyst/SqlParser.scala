@@ -3,8 +3,10 @@ package study.spark.sql.catalyst
 import study.spark.sql.AnalysisException
 
 import scala.language.implicitConversions
-import study.spark.sql.catalyst.analysis.{UnresolvedAttribute, UnresolvedExtractValue, UnresolvedStar}
+import study.spark.sql.catalyst.analysis.{UnresolvedAlias, UnresolvedAttribute, UnresolvedExtractValue, UnresolvedFunction, UnresolvedRelation, UnresolvedStar}
 import study.spark.sql.catalyst.expressions._
+import study.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Complete, Count, HyperLogLogPlusPlus}
+import study.spark.sql.catalyst.plans._
 import study.spark.sql.catalyst.plans.logical._
 import study.spark.sql.catalyst.util.DataTypeParser
 import study.spark.sql.types.{BooleanType, NullType, StringType}

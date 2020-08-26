@@ -4,7 +4,7 @@ package study.spark.sql.types
   * :: DeveloperApi ::
   * The data type for Maps. Keys in a map are not allowed to have `null` values.
   *
-  * Please use [[DataTypes.createMapType()]] to create a specific instance.
+  * Please use createMapType() to create a specific instance.
   *
   * @param keyType The data type of map keys.
   * @param valueType The data type of map values.
@@ -14,6 +14,16 @@ case class MapType(
     keyType: DataType,
     valueType: DataType,
     valueContainsNull: Boolean) extends DataType {
+
+  /**
+   * The default size of a value of the MapType is
+   * 100 * (the default size of the key type + the default size of the value type).
+   * (We assume that there are 100 elements).
+   */
+  override def defaultSize: Int = 100 * (keyType.defaultSize + valueType.defaultSize)
+
+  override private[spark] def asNullable: MapType =
+    MapType(keyType.asNullable, valueType.asNullable, valueContainsNull = true)
 
 }
 
